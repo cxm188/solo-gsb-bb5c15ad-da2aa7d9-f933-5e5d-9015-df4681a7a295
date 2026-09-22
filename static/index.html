@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>电子表格公式影响分析</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">▦</span>
+      <div>
+        <h1>电子表格公式影响分析</h1>
+        <p class="subtitle">解析跨表 / 区域引用 · 构建单元格依赖图 · 循环引用检测 · 影响路径追溯</p>
+      </div>
+    </div>
+    <div class="actions" id="globalActions" hidden>
+      <button class="btn ghost" id="exportBtn">导出分析 JSON</button>
+      <label class="btn ghost">
+        重新上传
+        <input type="file" id="reuploadInput" accept=".xlsx,.xlsm" hidden />
+      </label>
+    </div>
+  </header>
+
+  <main>
+    <!-- 上传区 -->
+    <section id="uploadView" class="card upload-card">
+      <div class="dropzone" id="dropzone">
+        <div class="dz-icon">⬆</div>
+        <p class="dz-title">拖拽 XLSX 文件到此处，或点击选择文件</p>
+        <p class="dz-hint">仅在浏览器与服务器内存中处理，文件不会写入磁盘；默认上限 20 MB</p>
+        <input type="file" id="fileInput" accept=".xlsx,.xlsm" hidden />
+        <button class="btn primary" id="chooseBtn">选择文件</button>
+      </div>
+      <div id="uploadError" class="error-banner" hidden></div>
+      <p class="sample-hint">
+        没有文件？可使用仓库自带示例
+        <code>examples/sample_formulas.xlsx</code>，包含跨表引用、整列区域、定义名称与循环引用演示。
+      </p>
+    </section>
+
+    <!-- 分析结果 -->
+    <div id="analysisView" hidden>
+      <!-- 概要 -->
+      <section class="card">
+        <div class="card-head">
+          <h2 id="wbTitle">—</h2>
+        </div>
+        <div class="stats" id="statsBar"></div>
+        <div id="warningsBox"></div>
+      </section>
+
+      <div class="layout">
+        <!-- 左：单元格浏览 -->
+        <section class="card cell-panel">
+          <div class="card-head">
+            <h2>单元格与公式</h2>
+          </div>
+          <div class="filters">
+            <label class="field">
+              工作表
+              <select id="sheetFilter"><option value="">全部工作表</option></select>
+            </label>
+            <label class="field grow">
+              搜索
+              <input type="search" id="cellSearch" placeholder="坐标 / 公式内容，如 Sheet2 或 SUM" />
+            </label>
+            <label class="check">
+              <input type="checkbox" id="formulaOnly" />
+              仅公式
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table class="cell-table">
+              <thead>
+                <tr>
+                  <th>单元格</th>
+                  <th>类型</th>
+                  <th>公式 / 值</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="cellTbody"></tbody>
+            </table>
+          </div>
+          <p class="list-hint" id="cellListHint"></p>
+        </section>
+
+        <!-- 右：影响分析 -->
+        <section class="card impact-panel">
+          <div class="card-head">
+            <h2>影响分析</h2>
+            <div class="seg" id="directionSeg">
+              <button data-dir="dependents" class="active">下游影响（谁引用它）</button>
+              <button data-dir="precedents">上游依赖（它引用谁）</button>
+            </div>
+          </div>
+          <div id="impactEmpty" class="empty-hint">
+            在左侧点击「分析影响」选择一个单元格，查看所有直接与间接关联的单元格及传播路径。
+          </div>
+          <div id="impactResult" hidden>
+            <div class="selected-box">
+              <div>
+                <span class="selected-cell" id="selectedCell"></span>
+                <span class="muted" id="selectedFormula"></span>
+              </div>
+              <div class="count-pills">
+                <span class="pill direct" id="directPill"></span>
+                <span class="pill indirect" id="indirectPill"></span>
+                <span class="pill total" id="totalPill"></span>
+              </div>
+            </div>
+            <div id="impactCycleNote" class="cycle-inline" hidden></div>
+            <div class="table-wrap impact-wrap">
+              <table class="impact-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>单元格</th>
+                    <th>关系</th>
+                    <th>传播路径</th>
+                  </tr>
+                </thead>
+                <tbody id="impactTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 循环引用 -->
+      <section class="card" id="cyclesCard" hidden>
+        <div class="card-head">
+          <h2>检测到的循环引用</h2>
+        </div>
+        <div id="cyclesList"></div>
+      </section>
+    </div>
+
+    <div id="loading" class="loading" hidden><div class="spinner"></div><p>正在解析工作簿…</p></div>
+  </main>
+
+  <footer class="footer">FastAPI · openpyxl · 原生前端 ｜ 自托管公式影响分析</footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>

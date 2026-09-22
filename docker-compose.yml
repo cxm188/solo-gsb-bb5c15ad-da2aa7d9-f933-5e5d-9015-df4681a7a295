@@ -1,0 +1,18 @@
+services:
+  formula-impact:
+    build: .
+    image: formula-impact:latest
+    container_name: formula-impact
+    ports:
+      - "8000:8000"
+    environment:
+      # 上传文件大小上限（MB）
+      MAX_UPLOAD_MB: "20"
+      # 单次影响分析最多返回的受影响单元格数
+      MAX_AFFECTED: "20000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/workbooks"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
