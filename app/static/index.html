@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电子表格公式影响分析</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #1a2130; --panel2: #222b3d; --border: #2e3a52;
+    --text: #e6ebf5; --muted: #8b98b0; --accent: #4f8cff; --accent2: #34d399;
+    --warn: #f87171; --chip: #2a3550;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+         background: var(--bg); color: var(--text); font-size: 14px; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px;
+           background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  header h1 { font-size: 17px; font-weight: 600; margin-right: auto; }
+  .btn { background: var(--accent); color: #fff; border: none; border-radius: 6px;
+         padding: 7px 14px; cursor: pointer; font-size: 13px; }
+  .btn:hover { opacity: .88; }
+  .btn.ghost { background: var(--chip); color: var(--text); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  #stats { display: none; gap: 16px; padding: 10px 20px; background: var(--panel2);
+           border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
+  #stats .stat { color: var(--muted); }
+  #stats .stat b { color: var(--text); margin-left: 4px; }
+  #stats .cycles b { color: var(--warn); }
+  #cyclePanel { display: none; padding: 10px 20px; background: #3a1d22; color: #fca5a5;
+                border-bottom: 1px solid var(--border); font-size: 13px; }
+  #cyclePanel .cyc { margin: 4px 0; font-family: ui-monospace, Consolas, monospace; }
+  main { display: flex; height: calc(100vh - 53px); }
+  #sidebar { width: 320px; min-width: 320px; border-right: 1px solid var(--border);
+             background: var(--panel); display: flex; flex-direction: column; }
+  #sidebar .filters { padding: 10px; display: flex; flex-direction: column; gap: 8px;
+                      border-bottom: 1px solid var(--border); }
+  select, input[type=text] { background: var(--panel2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; font-size: 13px; width: 100%; }
+  #cellList { overflow-y: auto; flex: 1; }
+  .cell-item { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #232c40; }
+  .cell-item:hover { background: var(--panel2); }
+  .cell-item.active { background: #263252; border-left: 3px solid var(--accent); }
+  .cell-item .cid { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  .cell-item .cformula { color: var(--muted); font-size: 12px; margin-top: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-family: ui-monospace, Consolas, monospace; }
+  .badge { display: inline-block; font-size: 11px; border-radius: 4px; padding: 1px 6px;
+           margin-left: 6px; vertical-align: 1px; }
+  .badge.cycle { background: #7f1d1d; color: #fecaca; }
+  .badge.n { background: var(--chip); color: var(--muted); }
+  #detail { flex: 1; overflow-y: auto; padding: 18px 22px; }
+  #empty { color: var(--muted); text-align: center; margin-top: 120px; line-height: 2; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+          padding: 14px 16px; margin-bottom: 16px; }
+  .card h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
+  .formula-code { font-family: ui-monospace, Consolas, monospace; background: var(--panel2);
+      border-radius: 6px; padding: 8px 10px; word-break: break-all; font-size: 13px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tab { padding: 6px 14px; border-radius: 6px; background: var(--chip); cursor: pointer;
+         color: var(--muted); border: none; font-size: 13px; }
+  .tab.active { background: var(--accent); color: #fff; }
+  .chip { display: inline-block; background: var(--chip); border-radius: 6px; padding: 4px 9px;
+          margin: 3px 4px 3px 0; cursor: pointer; font-family: ui-monospace, Consolas, monospace;
+          font-size: 12px; }
+  .chip:hover { background: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 8px;
+       border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); }
+  td { padding: 6px 8px; border-bottom: 1px solid #232c40; vertical-align: top; }
+  td.mono, .mono { font-family: ui-monospace, Consolas, monospace; }
+  .path { color: var(--muted); font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
+  .path a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .path a:hover { text-decoration: underline; }
+  .depth-pill { background: var(--chip); border-radius: 10px; padding: 1px 8px; font-size: 11px; }
+  .link { color: var(--accent); cursor: pointer; }
+  .link:hover { text-decoration: underline; }
+  #dropHint { border: 2px dashed var(--border); border-radius: 10px; padding: 40px;
+              text-align: center; color: var(--muted); margin: 30px; }
+  #dropHint.drag { border-color: var(--accent); color: var(--accent); }
+  .toast { position: fixed; top: 16px; right: 16px; background: #7f1d1d; color: #fecaca;
+           padding: 10px 16px; border-radius: 8px; display: none; z-index: 9; max-width: 420px; }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 电子表格公式影响分析</h1>
+  <span id="fname" class="muted"></span>
+  <button class="btn ghost" id="exportBtn" disabled>导出分析 JSON</button>
+  <button class="btn" id="uploadBtn">上传 XLSX</button>
+  <input type="file" id="fileInput" accept=".xlsx,.xlsm" hidden>
+</header>
+
+<div id="stats">
+  <span class="stat">工作表<b id="stSheets"></b></span>
+  <span class="stat">公式单元格<b id="stFormulas"></b></span>
+  <span class="stat">依赖边<b id="stEdges"></b></span>
+  <span class="stat cycles">循环引用<b id="stCycles"></b></span>
+</div>
+<div id="cyclePanel"></div>
+
+<div id="dropHint">将 .xlsx 文件拖到此处，或点击右上角「上传 XLSX」<br>
+  <span style="font-size:12px">没有文件？可先下载 <a class="link" href="/samples/sample_impact.xlsx" download>示例文件</a> 体验（含跨表引用、区域引用与循环引用）</span>
+</div>
+
+<main id="main" style="display:none">
+  <div id="sidebar">
+    <div class="filters">
+      <select id="sheetSelect"><option value="">全部工作表</option></select>
+      <input type="text" id="searchBox" placeholder="搜索单元格 / 公式…">
+      <label style="font-size:12px;color:var(--muted)">
+        <input type="checkbox" id="formulaOnly" checked> 仅显示含公式的单元格
+      </label>
+    </div>
+    <div id="cellList"></div>
+  </div>
+  <div id="detail">
+    <div id="empty">← 从左侧选择一个单元格，查看其影响面与依赖链</div>
+    <div id="detailBody" style="display:none">
+      <div class="card">
+        <h3>当前单元格</h3>
+        <div style="font-size:16px" class="mono" id="dCell"></div>
+        <div style="margin-top:8px" class="formula-code" id="dFormula"></div>
+        <div style="margin-top:8px" class="muted">缓存值：<span id="dValue" class="mono"></span>
+          <span id="dCycleBadge"></span></div>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-dir="downstream">下游影响（谁受它影响）</button>
+        <button class="tab" data-dir="upstream">上游依赖（它依赖谁）</button>
+      </div>
+      <div class="card">
+        <h3 id="directTitle">直接受影响单元格</h3>
+        <div id="directList"></div>
+      </div>
+      <div class="card">
+        <h3 id="impactTitle">全部受影响单元格（含间接，按层级）</h3>
+        <div id="truncated" class="muted" style="display:none;margin-bottom:8px">⚠ 结果过多，已截断</div>
+        <table>
+          <thead><tr><th style="width:60px">层级</th><th>单元格</th><th>公式</th><th>值</th><th style="width:38%">路径</th></tr></thead>
+          <tbody id="impactRows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+let WID = null, CURRENT = null, DIRECTION = 'downstream';
+const $ = id => document.getElementById(id);
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 4000);
+}
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// ---------------- 上传 ----------------
+$('uploadBtn').onclick = () => $('fileInput').click();
+$('fileInput').onchange = e => { if (e.target.files[0]) uploadFile(e.target.files[0]); };
+const hint = $('dropHint');
+['dragover','dragenter'].forEach(ev => document.addEventListener(ev, e => {
+  e.preventDefault(); hint.classList.add('drag');
+}));
+['dragleave','drop'].forEach(ev => document.addEventListener(ev, e => {
+  e.preventDefault(); hint.classList.remove('drag');
+}));
+document.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if (f) uploadFile(f);
+});
+
+async function uploadFile(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  $('uploadBtn').disabled = true;
+  try {
+    const r = await fetch('/api/upload', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || '上传失败');
+    WID = data.workbook_id;
+    onUploaded(data);
+  } catch (e) { toast(e.message); }
+  finally { $('uploadBtn').disabled = false; }
+}
+
+function onUploaded(d) {
+  $('fname').textContent = d.filename;
+  $('dropHint').style.display = 'none';
+  $('main').style.display = 'flex';
+  $('stats').style.display = 'flex';
+  $('stSheets').textContent = d.sheets.length;
+  $('stFormulas').textContent = d.formula_count;
+  $('stEdges').textContent = d.edge_count;
+  $('stCycles').textContent = d.cycle_count;
+  $('exportBtn').disabled = false;
+
+  const sel = $('sheetSelect');
+  sel.innerHTML = '<option value="">全部工作表</option>' +
+    d.sheets.map(s => `<option value="${esc(s.name)}">${esc(s.name)}（${s.formula_count} 个公式）</option>`).join('');
+
+  const cp = $('cyclePanel');
+  if (d.cycle_count > 0) {
+    cp.style.display = 'block';
+    cp.innerHTML = '⚠ 检测到 ' + d.cycle_count + ' 组循环引用：' +
+      d.cycles.map((c, i) => `<div class="cyc">环 ${i+1}: ` +
+        c.map(n => `<a class="link js-cell" data-cell="${esc(n)}">${esc(n)}</a>`).join(' → ') +
+        ` → ${esc(c[0])}</div>`).join('');
+  } else { cp.style.display = 'none'; cp.innerHTML = ''; }
+  loadCells();
+}
+
+// ---------------- 单元格列表 ----------------
+let searchTimer = null;
+$('sheetSelect').onchange = loadCells;
+$('formulaOnly').onchange = loadCells;
+$('searchBox').oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadCells, 250); };
+
+async function loadCells() {
+  if (!WID) return;
+  const p = new URLSearchParams({
+    sheet: $('sheetSelect').value, q: $('searchBox').value,
+    formulas_only: $('formulaOnly').checked, limit: 500,
+  });
+  const r = await fetch(`/api/workbooks/${WID}/cells?` + p);
+  const d = await r.json();
+  $('cellList').innerHTML = d.cells.map(c => `
+    <div class="cell-item" data-cell="${esc(c.cell)}">
+      <div class="cid">${esc(c.display)}
+        ${c.in_cycle ? '<span class="badge cycle">循环</span>' : ''}
+        <span class="badge n">↓${c.dependent_count} ↑${c.precedent_count}</span></div>
+      ${c.formula ? `<div class="cformula">${esc(c.formula)}</div>` : ''}
+    </div>`).join('') || '<div style="padding:20px;color:var(--muted)">无匹配单元格</div>';
+}
+
+// 事件委托：任何带 data-cell 的元素点击后跳转分析（cell 为内部 id，无引号）
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-cell]');
+  if (el && WID) selectCell(el.dataset.cell);
+});
+
+// ---------------- 影响面 ----------------
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  DIRECTION = t.dataset.dir;
+  if (CURRENT) loadImpact(CURRENT);
+});
+
+async function selectCell(cell) {
+  // cell 为后端内部 id（工作表名!坐标，无引号）
+  CURRENT = cell;
+  document.querySelectorAll('.cell-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.cell === cell));
+  await loadImpact(cell);
+}
+
+async function loadImpact(cell) {
+  const r = await fetch(`/api/workbooks/${WID}/impact?cell=${encodeURIComponent(cell)}&direction=${DIRECTION}`);
+  const d = await r.json();
+  if (!r.ok) { toast(d.detail || '查询失败'); return; }
+  $('empty').style.display = 'none';
+  $('detailBody').style.display = 'block';
+  $('dCell').textContent = d.root_display;
+  $('dFormula').textContent = d.root_formula || '（非公式单元格）';
+  $('dValue').textContent = d.root_value ?? '—';
+  $('dCycleBadge').innerHTML = d.root_in_cycle ? '<span class="badge cycle">处于循环引用中</span>' : '';
+  $('directTitle').textContent = DIRECTION === 'downstream'
+    ? `直接受影响单元格（${d.direct.length}）` : `直接依赖的单元格（${d.direct.length}）`;
+  $('impactTitle').textContent = DIRECTION === 'downstream'
+    ? `全部受影响单元格（含间接，共 ${d.total} 个）` : `全部上游依赖（含间接，共 ${d.total} 个）`;
+  $('directList').innerHTML = d.direct.length
+    ? d.direct.map(c => `<span class="chip js-cell" data-cell="${esc(c.cell)}" title="${esc(c.formula || '')}">${esc(c.display)}${c.in_cycle ? ' 🔁' : ''}</span>`).join('')
+    : '<span class="muted">无</span>';
+  $('truncated').style.display = d.truncated ? 'block' : 'none';
+  $('impactRows').innerHTML = d.impacted.map(it => `
+    <tr>
+      <td><span class="depth-pill">${it.depth}</span></td>
+      <td class="mono"><a class="link js-cell" data-cell="${esc(it.cell)}">${esc(it.display)}</a>
+        ${it.in_cycle ? '<span class="badge cycle">循环</span>' : ''}</td>
+      <td class="mono" style="word-break:break-all">${esc(it.formula || '')}</td>
+      <td class="mono">${esc(it.value ?? '')}</td>
+      <td class="path">${it.path.map((p, idx) => {
+        const node = it.path_raw[idx];
+        return `<a data-cell="${esc(node)}">${esc(p)}</a>`;
+      }).join(' → ')}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="muted" style="padding:14px">无</td></tr>';
+}
+
+// ---------------- 导出 ----------------
+$('exportBtn').onclick = () => { if (WID) window.location = `/api/workbooks/${WID}/export`; };
+</script>
+</body>
+</html>
